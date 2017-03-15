@@ -29,12 +29,12 @@ python dbRepair.py -h 127.0.0.1 -P 3306 -u sys -p sys -t 5
         -h               help
 日志输出如下：
 
-    2017-03-15 16:07:58,346 - 1.py:749 - SlaveSQLRepair - Slave All Check Right , Sleep 5 Seconds for Next Loop
-    2017-03-15 16:08:18,368 - 1.py:749 - SlaveSQLRepair - Slave All Check Right , Sleep 5 Seconds for Next Loop
-    2017-03-15 16:08:23,374 - 1.py:749 - SlaveSQLRepair - Slave All Check Right , Sleep 5 Seconds for Next Loop
-    2017-03-15 16:08:28,383 - 1.py:749 - SlaveSQLRepair - Slave All Check Right , Sleep 5 Seconds for Next Loop
-    2017-03-15 16:08:33,396 - 1.py:734 - SlaveSQLRepair - ERROR FOUND !!! STRAT TO REPAIR RECORD
-    2017-03-15 16:08:33,396 - 1.py:735 - SlaveSQLRepair - ERROR MESSAGE : Could not execute Delete_rows event on table zty.t1; Can't find record in 't1', Error_code: 1032; handler error HA_ERR_END_OF_FILE; the event's master log mysql-bin.000002, end_log_pos 631904743
-    2017-03-15 16:08:33,396 - 1.py:736 - SlaveSQLRepair - RELAY LOG FILE : /ebs/mysql_data/mysqld-relay-bin.000027 . START POSITION : 222295 . STOP POSITION : 223468
-    2017-03-15 16:08:33,406 - 1.py:640 - SlaveSQLRepair - SQL COMMAND IS : REPLACE INTO zty.t1 SELECT 1
-    2017-03-15 16:08:33,409 - 1.py:640 - SlaveSQLRepair - SQL COMMAND IS : REPLACE INTO zty.t1 SELECT 1
+    2017-03-15 16:07:58,346 - dbRepair.py:749 - SlaveSQLRepair - Slave All Check Right , Sleep 5 Seconds for Next Loop
+    2017-03-15 16:08:18,368 - dbRepair.py:749 - SlaveSQLRepair - Slave All Check Right , Sleep 5 Seconds for Next Loop
+    2017-03-15 16:08:23,374 - dbRepair.py:749 - SlaveSQLRepair - Slave All Check Right , Sleep 5 Seconds for Next Loop
+    2017-03-15 16:08:28,383 - dbRepair.py:749 - SlaveSQLRepair - Slave All Check Right , Sleep 5 Seconds for Next Loop
+    2017-03-15 16:08:33,396 - dbRepair.py:734 - SlaveSQLRepair - ERROR FOUND !!! STRAT TO REPAIR RECORD
+    2017-03-15 16:08:33,396 - dbRepair.py:735 - SlaveSQLRepair - ERROR MESSAGE : Could not execute Delete_rows event on table zty.t1; Can't find record in 't1', Error_code: 1032; handler error HA_ERR_END_OF_FILE; the event's master log mysql-bin.000002, end_log_pos 631904743
+    2017-03-15 16:08:33,396 - dbRepair.py:736 - SlaveSQLRepair - RELAY LOG FILE : /ebs/mysql_data/mysqld-relay-bin.000027 . START POSITION : 222295 . STOP POSITION : 223468
+    2017-03-15 16:08:33,406 - dbRepair.py:640 - SlaveSQLRepair - SQL COMMAND IS : REPLACE INTO zty.t1 SELECT 1
+    2017-03-15 16:08:33,409 - dbRepair.py:640 - SlaveSQLRepair - SQL COMMAND IS : REPLACE INTO zty.t1 SELECT 1
