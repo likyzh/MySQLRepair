@@ -6,9 +6,26 @@ import struct
 import sys
 import getopt
 import time
+import logging
+import logging.handlers
+import threading
+import os
 import signal
+import atexit
 
-is_sigint_up = False
+
+
+LOG_FILE = 'SlaveSQLRepair.log'
+
+
+handler = logging.handlers.RotatingFileHandler(LOG_FILE, maxBytes=1024 * 1024, backupCount=5)  # 实例化handler
+fmt = '%(asctime)s - %(filename)s:%(lineno)s - %(name)s - %(message)s'
+formatter = logging.Formatter(fmt)  # 实例化formatter
+handler.setFormatter(formatter)  # 为handler添加formatter
+logger = logging.getLogger('SlaveSQLRepair')  # 获取名为tst的logger
+logger.addHandler(handler)  # 为logger添加handler
+logger.setLevel(logging.DEBUG)
+
 
 def getConn(host, user, passwd, port, db):
     try:
@@ -17,7 +34,7 @@ def getConn(host, user, passwd, port, db):
                            cursorclass=MySQLdb.cursors.DictCursor)
         return conn
     except MySQLdb.Error, e:
-        print inred("ERROR: %d: %s" % (e.args[0], e.args[1]))
+        logger.error("ERROR: %d: %s" % (e.args[0], e.args[1]))
         return False
 
 
@@ -402,7 +419,7 @@ def parse_sql(column_info, type_code):
         value = reader.int8()
         number_bytes = int(number_bytes)+1
     else:
-        print inred("UNKOWN COLUMN TYPE , COLUMN TYPE : %s " % column_type)
+        logger.error("UNKOWN COLUMN TYPE , COLUMN TYPE : %s " % column_type)
         sys.exit(1)
 
     if type_code == EventType.DELETE_ROWS_EVENT:
@@ -417,7 +434,6 @@ def parse_sql(column_info, type_code):
     return sql_list
 
 def unpack_record (schema_name, table_name, column, bit_map, type_code, column_info):
-    #print bit_map
     _sql_list = []
     number_count = 0
     results = column_info
@@ -428,7 +444,7 @@ def unpack_record (schema_name, table_name, column, bit_map, type_code, column_i
     elif type_code == EventType.WRITE_ROWS_EVENT:
         sql_command = "REPLACE INTO %s.%s SELECT " % (schema_name,table_name)
     else:
-        print inred("THIS IS A DELETE COMMAND , BUT CANT'T FIND PRIMARY KEY, EXIT...")
+        logger.error("THIS IS A DELETE COMMAND , BUT CANT'T FIND PRIMARY KEY, EXIT...")
         sys.exit()
 
     while k < column:
@@ -483,7 +499,7 @@ def unpack_record (schema_name, table_name, column, bit_map, type_code, column_i
                 sql_command=sql_command+sql_list[0]
                 number_count=number_count+int(sql_list[1])
             else:
-                print inred("ERROR: UNKOWN COLUMN TYPE, COLUMN TYPE : %s" % column_type)
+                logger.error("ERROR: UNKOWN COLUMN TYPE, COLUMN TYPE : %s" % column_type)
                 sys.exit()
         elif int(bit_map[sizex-k]) ==1 and is_primary==0 :
             if type_code==EventType.DELETE_ROWS_EVENT and is_primary==0:
@@ -510,7 +526,7 @@ def hanle_error(binlogfile, start_position, stop_position, host, user, password,
     if check_mysqlversion(host,user,password,port,dbname):
         pass
     else:
-        print inred("[WARNINT] MYSQL VERSION IS BIGGER THAN MYSQL 5.6.2, NOT TESTED ....")
+        logger.warning("[WARNINT] MYSQL VERSION IS BIGGER THAN MYSQL 5.6.2, NOT TESTED ....")
         EventType.WRITE_ROWS_EVENT = 30
         EventType.UPDATE_ROWS_EVENT = 31
         EventType.DELETE_ROWS_EVENT = 32
@@ -518,7 +534,7 @@ def hanle_error(binlogfile, start_position, stop_position, host, user, password,
 
     binlog_header = reader.chars(EVENT_LEN.BINLOG_HEADER_LEN)
     if binlog_header != EVENT_LEN.BINLOG_HEADER:
-        print inred("THIS IS NOT A BINLOG FILE, EXIT...")
+        logger.error("THIS IS NOT A BINLOG FILE, EXIT...")
         sys.exit()
 
     start_pos = start_position
@@ -532,7 +548,7 @@ def hanle_error(binlogfile, start_position, stop_position, host, user, password,
 
         header = EventHeader(reader)
         if header.event_length == 0:
-            print inred("EVENT PARASE ERROR , EVENT LENGTH IS NULL , POSITION : %s" % (start_position))
+            logger.error("EVENT PARASE ERROR , EVENT LENGTH IS NULL , POSITION : %s" % (start_position))
             sys.exit()
         start_pos = reader.stream.tell()
         if header.type_code == EventType.TABLE_MAP_EVENT:
@@ -548,12 +564,12 @@ def hanle_error(binlogfile, start_position, stop_position, host, user, password,
         elif header.type_code == EventType.WRITE_ROWS_EVENT:
             type_code_contrary = EventType.DELETE_ROWS_EVENT
             if reader.uint48() != table_id:
-                print inred("ERROR: METADATA WRONG, TABLE_ID IS NOT RIGHT , EXIT...")
+                logger.error("ERROR: METADATA WRONG, TABLE_ID IS NOT RIGHT , EXIT...")
                 sys.exit()
             reader.seek(2, 1)
             columns = reader.int8(NUMBER_TYPE.UNSIGNED)
             if columns > 250:
-                print inred("ERROR: COLUMNS IS TOO LONG , MAX IS 250 , EXIT ...")
+                logger.error("ERROR: COLUMNS IS TOO LONG , MAX IS 250 , EXIT ...")
                 sys.exit(1)
             table_map = ((columns+7)/8)
             reader.seek(table_map, 1)
@@ -566,14 +582,13 @@ def hanle_error(binlogfile, start_position, stop_position, host, user, password,
                 sql_command = _sql_list[0]
                 execute_command(sql_command, host, user, password, port, dbname)
                 remain = remain-int(_sql_list[1])-table_map
-                print "SQL COMMAND IS :", sql_command
+                logger.info("SQL COMMAND IS :", sql_command)
 
             continue
         elif header.type_code == EventType.UPDATE_ROWS_EVENT:
-            #print "THIS IS A UPDATE ROW EVENTS"
             type_code_contrary = EventType.WRITE_ROWS_EVENT
             if reader.uint48() != table_id:
-                print "ERROR: METADATA WRONG, TABLE_ID IS NOT RIGHT , EXIT..."
+                logger.error("ERROR: METADATA WRONG, TABLE_ID IS NOT RIGHT , EXIT...")
                 sys.exit()
             reader.seek(2, 1)
             columns = reader.int8(NUMBER_TYPE.UNSIGNED)
@@ -596,19 +611,19 @@ def hanle_error(binlogfile, start_position, stop_position, host, user, password,
                 remain = remain-int(_sql_list_old[1])-int(_sql_list_new[1])-table_map*2
                 sql_command_old = _sql_list_old[0]
                 sql_command_new = _sql_list_new[0]
-                print "SQL COMMAND IS :", sql_command_old
+                logger.info("SQL COMMAND IS :%s" % sql_command_old)
                 execute_command(sql_command_old, host, user, password, port, dbname)
             continue
         elif header.type_code == EventType.DELETE_ROWS_EVENT:
             #print "THIS IS A DELETE ROW EVENTS"
             type_code_contrary = EventType.WRITE_ROWS_EVENT
             if reader.uint48() != table_id:
-                print "ERROR: METADATA WRONG, TABLE_ID IS NOT RIGHT , EXIT..."
+                logger.error( "ERROR: METADATA WRONG, TABLE_ID IS NOT RIGHT , EXIT...")
                 sys.exit()
             reader.seek(2, 1)
             columns = reader.int8(NUMBER_TYPE.UNSIGNED)
             if columns > 250:
-                print "ERROR: COLUMNS IS TOO MUCH , MAX IS 250 , EXIT ..."
+                logger.error( "ERROR: COLUMNS IS TOO MUCH , MAX IS 250 , EXIT ..." )
                 sys.exit(1)
             table_map = ((columns+7)/8)
             reader.seek(table_map,1)
@@ -622,7 +637,7 @@ def hanle_error(binlogfile, start_position, stop_position, host, user, password,
                 sql_command = _sql_list[0]
                 execute_command(sql_command, host, user, password, port, dbname)
                 remain = remain-int(_sql_list[1])-table_map
-                print "SQL COMMAND IS :", sql_command
+                logger.info( "SQL COMMAND IS : %s" % sql_command )
             continue
         elif header.type_code == EventType.ROTATE_EVENT:
 
@@ -630,8 +645,7 @@ def hanle_error(binlogfile, start_position, stop_position, host, user, password,
                 unsupport a transaction cross two log .
                 todo: start next relay log , rollback , until commit event.
             """
-            print inred("THIS IS A ROTATE_EVENT , MAYBE A TRANSACTION ACROSS TWO RELAY LOG, NOT SUPPORT NOW,EXIT... ")
-            #print inred("THIS IS A ROTATE_EVENT, GO ON NEXT ONE RELAY LOG UNTIL COMMIT EVENT.... ")
+            logger.warning("THIS IS A ROTATE_EVENT , MAYBE A TRANSACTION ACROSS TWO RELAY LOG, NOT SUPPORT NOW,EXIT... ")
             reader.close()
             sys.exit()
         else:
@@ -665,13 +679,14 @@ def check_slave(host, user, password, port):
         slaveinfo['Relay_Log_File'] = Relay_Log_File
         slaveinfo['Relay_Log_Pos'] = Relay_Log_Pos
         slaveinfo['Exec_Master_Log_Pos'] = Exec_Master_Log_Pos
+        logger.info(results)
         return slaveinfo
     else:
         return False
 
 def check_python_version():
     if sys.version_info < (2, 6):
-        print('At least Python 2.6 is required')
+        logger.error('At least Python 2.6 is required')
         sys.exit()
 
 def get_datadir(host, user, password, port):
@@ -683,15 +698,58 @@ def get_datadir(host, user, password, port):
     conn.close()
     return results.get('Value')
 
-def sigint_handler(signum, frame):
-  global is_sigint_up
-  is_sigint_up = True
+class SQLRePair(threading.Thread):
 
-signal.signal(signal.SIGINT, sigint_handler)
+    def __init__(self,config):
+        threading.Thread.__init__(self)
+        self.host = config['host']
+        self.user = config['user']
+        self.password = config['password']
+        self.port = config['port']
+        self.sleep = config['sleep']
+
+    def run(self):
+        host = self.host
+        user = self.user
+        password = self.password
+        port = self.port
+        sleep = self.sleep
+
+        while True:
+            slaveinfo = check_slave(host, user, password, port)
+            if slaveinfo is not False:
+                datadir = get_datadir(host, user, password, port)
+                Last_SQL_Errno = int(slaveinfo.get('Last_SQL_Errno'))
+                Last_SQL_Error = slaveinfo.get('Last_SQL_Error')
+                Relay_Log_File = slaveinfo.get('Relay_Log_File')
+                Relay_Log_Pos = int(slaveinfo.get('Relay_Log_Pos'))
+                Exec_Master_Log_Pos = int(slaveinfo.get('Exec_Master_Log_Pos'))
+
+                if Last_SQL_Errno == 1032 or Last_SQL_Errno == 1062:
+                    # 1032 : key not found, 1062 : duplicate key
+                    binlogfile = datadir + Relay_Log_File
+                    end_log_pos = int(Last_SQL_Error.split(' ')[-1])
+                    start_position = Relay_Log_Pos
+                    stop_position = Relay_Log_Pos + (end_log_pos - Exec_Master_Log_Pos)
+                    logger.error("ERROR FOUND !!! STRAT TO REPAIR RECORD")
+                    logger.error("ERROR MESSAGE : %s" % (Last_SQL_Error))
+                    logger.error("RELAY LOG FILE : %s . START POSITION : %s . STOP POSITION : %s " % (binlogfile,start_position, stop_position))
+                    hanle_error(binlogfile, start_position, stop_position, host, user, password, port, 'mysql')
+                    sql = "stop slave"
+                    execute_command(sql, host, user, password, port, 'mysql')
+                    sql = "start slave"
+                    execute_command(sql, host, user, password, port, 'mysql')
+                    time.sleep(0.3) #ADD Sleep Time
+                else:
+                    logger.error("ERROR : TYPE IS NOT RIGHT, RESTART SLAVE MAY RESOLVE PROBLEM !")
+                    logger.error(slaveinfo)
+                    break
+
+            else:
+                logger.info("Slave All Check Right , Sleep %s Seconds for Next Loop" % (sleep))
+                time.sleep(sleep)
 
 
-def inred(s):
-    return"%s[31;2m%s%s[0m"%(chr(27), s, chr(27))
 
 def usage():
     print("Usage:%s [-h %s -u %s -p %s -P %s ]" %
@@ -700,21 +758,12 @@ def usage():
     -h               host/ip. must have.
     -u<user>         username. must have
     -p<string>       password
-    -P<NUM>          prot
-    -l<string>       log/tmpfile dir
-    -t<NUM>          every NUM s  to check slave , default once.
+    -P<NUM>          port
+    -t<NUM>          every seconds to check slave.
     -h               help
     '''
+def parserconfig():
 
-if __name__ == '__main__' :
-
-    host = ''
-    user = ''
-    password = ''
-    port = ''
-    sleep = 5
-    logdir = ''
-    check_python_version()
     try:
         opts, args = getopt.getopt(sys.argv[1:], "h:u:p:P:t:m:l:",
                                   ["host=","user=","password=","port=","sleep=","logdir=","help"])
@@ -729,69 +778,78 @@ if __name__ == '__main__' :
                 port = int(arg)
             elif opt in ('-t', '--sleep'):
                 sleep = int(arg)
-            elif opt in ('-l', '--logdir'):
-                logdir = arg
+            # elif opt in ('-l', '--logdir'):
+            #     logdir = arg
             elif opt in ('--help'):
                 usage()
                 sys.exit()
             else:
                 usage()
                 sys.exit()
-    except getopt.GetoptError:
+        return {'host':host,'user':user,'password':password,'port':port,'sleep':sleep}
+    except getopt.GetoptError,e:
         usage()
+        logger.exception(e)
+        sys.exit()
+    except Exception,e:
+        usage()
+        logger.exception(e)
         sys.exit()
 
-    if host is '' or user is '':
-        print inred("ERROR: HOST/USERNAME IS REQUIRED...")
-        sys.exit()
+def main():
+    check_python_version()
+    SQLRePair(parserconfig()).start()
 
 
-    error_num = 0
-    while True:
-        slaveinfo = check_slave(host, user, password, port)
-        if slaveinfo is not False:
-            error_num = 0
-            datadir = get_datadir(host, user, password, port)
-            Last_SQL_Errno = int(slaveinfo.get('Last_SQL_Errno'))
-            Last_SQL_Error = slaveinfo.get('Last_SQL_Error')
-            Relay_Log_File = slaveinfo.get('Relay_Log_File')
-            Relay_Log_Pos = int(slaveinfo.get('Relay_Log_Pos'))
-            Exec_Master_Log_Pos = int(slaveinfo.get('Exec_Master_Log_Pos'))
+def daemonize(pidfile,stdin='/dev/null', stdout='/tmp/daemon.log', stderr='/tmp/daemon.log'):
+    try:
+        pid = os.fork()
+        if pid > 0:
+            sys.exit(0)  # 父进程退出
+    except OSError, e:
+        sys.stderr.write("fork #1 failed: (%d) %s\n" % (e.errno, e.strerror))
+        sys.exit(1)
 
-            if Last_SQL_Errno == 1032 or Last_SQL_Errno == 1062:
-                #1032 : key not found, 1062 : duplicate key
-                binlogfile = datadir+Relay_Log_File
-                end_log_pos = int(Last_SQL_Error.split(' ')[-1])
-                start_position = Relay_Log_Pos
-                stop_position = Relay_Log_Pos + (end_log_pos - Exec_Master_Log_Pos)
-                print "*"*100
-                print " "*10 + "ERROR FOUND !!! STRAT TO REPAIR RECORD..."
-                print "*"*100
-                print "RELAYLOG FILE : %s " % (binlogfile)
-                print "START POSITION : %s . STOP POSITION : %s " % (start_position, stop_position)
-                print "ERROR MESSAGE : %s" % (Last_SQL_Error)
-                hanle_error(binlogfile, start_position, stop_position, host, user, password, port, 'mysql')
-                sql = "stop slave"
-                execute_command(sql, host, user, password, port, 'mysql')
-                sql = "start slave"
-                execute_command(sql, host, user, password, port, 'mysql')
+    os.chdir("/")
+    os.umask(0)
+    os.setsid()
 
-            else:
-                print inred("ERROR TYPE IS NOT RIGHT, RESTART SLAVE MAY RESOLVE PROBLEM !")
-                print Last_SQL_Error
-                sys.exit()
+    # 执行第二次fork
+    try:
+        pid = os.fork()
+        if pid > 0:
+            sys.exit(0)  # 第二个父进程退出
+    except OSError, e:
+        sys.stderr.write("fork #2 failed: (%d) %s\n" % (e.errno, e.strerror))
+        sys.exit(1)
 
-        else:
-            error_num = error_num + 1
-            print "SLAVE CHECK OK !!!, SKIP..."
-            if error_num > 100:
-                print "RUN 100 Times ALL OK, EXIT..."
-                #sys.exit()
-        if is_sigint_up:
-            print '-'*50
-            time.sleep(1)
-            print inred("[WARNING] : Exit the Program .....")
-            break
-        else:
-            time.sleep(sleep)
+        # 进程已经是守护进程了，重定向标准文件描述符
+
+    for f in sys.stdout, sys.stderr: f.flush()
+    si = open(stdin, 'r')
+    so = open(stdout, 'a+')
+    se = open(stderr, 'a+', 0)
+    os.dup2(si.fileno(), sys.stdin.fileno())
+    os.dup2(so.fileno(), sys.stdout.fileno())
+    os.dup2(se.fileno(), sys.stderr.fileno())
+
+    # Write the PID file
+    with open(pidfile,'w') as f:
+        print(os.getpid(),f)
+
+
+    atexit.register(lambda: os.remove(pidfile))
+
+    def sigterm_handler(signo, frame):
+        raise SystemExit(1)
+
+    signal.signal(signal.SIGTERM, sigterm_handler)
+
+if __name__ == '__main__' :
+    PIDFILE = '/tmp/daemon.pid'
+    daemonize(PIDFILE)
+    main()
+
+
+
 
