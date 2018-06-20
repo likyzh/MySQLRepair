@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-#author: dumingyou,zhaotianyuan from netease
 #this script is used to repair mysql replication errors(1062, 1032)
 #1062: HA_ERR_FOUND_DUPP_KEY (duplicate key)
 #1032: HA_ERR_KEY_NOT_FOUND (key not found)
